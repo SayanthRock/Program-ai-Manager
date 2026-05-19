@@ -1,0 +1,8 @@
+{
+  "name": "E. Moments",
+  "description": "An AI-powered wedding photography portal with face verification and Firebase persistence. Features include multi-user authentication, gallery management, and customizable watermarks.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

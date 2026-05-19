@@ -1,0 +1,66 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 3. Primitive Definitions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. Master Gate catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Validation Helpers
+    function isValidWedding(data) {
+      return data.keys().hasAll(['name', 'date', 'ownerId']) &&
+             data.keys().size() <= 16 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.date is string &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidPhoto(data) {
+      return data.keys().hasAll(['url', 'weddingId', 'uploadedBy']) &&
+             data.keys().size() <= 6 &&
+             data.url is string && data.url.size() > 0 && data.url.size() <= 2000 &&
+             data.weddingId is string &&
+             data.uploadedBy == request.auth.uid;
+    }
+
+    // Weddings
+    match /weddings/{weddingId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(weddingId) && isValidWedding(incoming());
+      allow update: if isOwner(existing().ownerId) && isValidWedding(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'date', 'location', 'watermarkEnabled', 'sharingLimit', 'watermarkText', 'watermarkPosition', 'watermarkOpacity', 'watermarkBg', 'watermarkTextSize', 'liquidGlassEnabled', 'photoBlur', 'coverUrl']);
+      allow delete: if isOwner(existing().ownerId);
+
+      // Photos Sub-collection
+      match /photos/{photoId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(photoId) && 
+                      isValidPhoto(incoming()) && 
+                      get(/databases/$(database)/documents/weddings/$(weddingId)).data.ownerId == request.auth.uid;
+        allow delete: if get(/databases/$(database)/documents/weddings/$(weddingId)).data.ownerId == request.auth.uid;
+      }
+    }
+  }
+}

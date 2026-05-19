@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 import { motion, AnimatePresence } from "motion/react";
 import QRCode from "react-qr-code";
 import jsQR from "jsqr";
@@ -101,6 +103,7 @@ export default function App() {
   const [matchedIndices, setMatchedIndices] = useState<number[]>([]);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDownloadingArchive, setIsDownloadingArchive] = useState(false);
   const [networkView, setNetworkView] = useState<"followers" | "following">("followers");
   const [uploadSpeed, setUploadSpeed] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -586,6 +589,41 @@ export default function App() {
     }
   };
 
+  const handleDownloadAll = async () => {
+    if (uploadedPhotos.length === 0 || !currentWedding) return;
+    setIsDownloadingArchive(true);
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder(currentWedding.name || "E-Moments");
+      
+      const photosToDownload = showSelectionsOnly ? matchedPhotos : uploadedPhotos;
+      
+      if (photosToDownload.length === 0) {
+        showNotification("No objects detected in current viewport");
+        return;
+      }
+
+      for (let i = 0; i < photosToDownload.length; i++) {
+        const photo = photosToDownload[i];
+        // data:[<mediatype>][;base64],<data>
+        // We need to strip the prefix
+        const base64Data = photo.url.split(',')[1];
+        if (base64Data) {
+          folder?.file(`E-Moment-${photo.id || i + 1}.jpg`, base64Data, { base64: true });
+        }
+      }
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, `${currentWedding.name.replace(/\s+/g, '_')}-Archive.zip`);
+      showNotification("Archive synchronized and secured");
+    } catch (e) {
+      console.error(e);
+      showNotification("Archive extraction failed");
+    } finally {
+      setIsDownloadingArchive(false);
+    }
+  };
+
   const handleDownloadPhoto = async (url: string, filename: string) => {
     try {
       const response = await fetch(url);
@@ -1036,11 +1074,20 @@ export default function App() {
                 <button 
                   onClick={toggleWatermark}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all ${
-                    currentWedding?.watermarkEnabled ? 'bg-stone-900 text-white shadow-lg shadow-stone-200' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                    (currentWedding?.watermarkEnabled ?? true) ? 'bg-stone-900 text-white shadow-lg shadow-stone-200' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                   }`}
                 >
                   <Settings2 className="w-3.5 h-3.5" />
-                  Watermark: {currentWedding?.watermarkEnabled ? 'ON' : 'OFF'}
+                  Watermark: {(currentWedding?.watermarkEnabled ?? true) ? 'ON' : 'OFF'}
+                </button>
+                <button 
+                  onClick={handleDownloadAll}
+                  disabled={isDownloadingArchive}
+                  className="p-2 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200 transition-all flex items-center gap-2 px-3 disabled:opacity-50"
+                  title="Download All Photos"
+                >
+                  {isDownloadingArchive ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Download All</span>
                 </button>
                 {currentWedding?.ownerId === user?.uid && (
                   <button 
@@ -2440,10 +2487,10 @@ export default function App() {
                          <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-stone-400">Signature Engine</p>
                          <div className="flex flex-col gap-2">
                            <button 
-                             onClick={() => updateWatermarkSettings({ watermarkEnabled: !currentWedding.watermarkEnabled })}
-                             className={`w-full py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${currentWedding.watermarkEnabled ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900' : 'bg-stone-50 dark:bg-stone-900 text-stone-400'}`}
+                             onClick={() => updateWatermarkSettings({ watermarkEnabled: !(currentWedding.watermarkEnabled ?? true) })}
+                             className={`w-full py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${(currentWedding.watermarkEnabled ?? true) ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900' : 'bg-stone-50 dark:bg-stone-900 text-stone-400'}`}
                            >
-                             Watermark: {currentWedding.watermarkEnabled ? 'ENABLED' : 'DISABLED'}
+                             Watermark: {(currentWedding.watermarkEnabled ?? true) ? 'ENABLED' : 'DISABLED'}
                            </button>
                            <button 
                              onClick={() => setShowWatermarkModal(true)}
@@ -2452,6 +2499,19 @@ export default function App() {
                              Configure Aesthetics
                            </button>
                          </div>
+                       </div>
+
+                       <div className="space-y-4">
+                         <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-stone-400">Bulk Extraction</p>
+                         <button 
+                           onClick={handleDownloadAll}
+                           disabled={isDownloadingArchive}
+                           className="w-full py-5 rounded-2xl bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-widest hover:translate-y-[-2px] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-indigo-500/20"
+                         >
+                           {isDownloadingArchive ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                           Download All Memories
+                         </button>
+                         <p className="text-[8px] text-center text-stone-400 uppercase tracking-widest leading-loose">Extract entire high-fidelity sanctuary<br/>archive as single compressed protocol</p>
                        </div>
                        
                        <div className="space-y-4">
